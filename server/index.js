@@ -1,0 +1,270 @@
+import express from 'express';
+import cors from 'cors';
+import bcrypt from 'bcryptjs';
+import db from './db.js';
+
+const app = express();
+const PORT = 3001;
+
+app.use(cors());
+app.use(express.json());
+
+// ========================
+// AUTH ENDPOINTS
+// ========================
+
+// Sign Up
+app.post('/api/auth/signup', (req, res) => {
+  try {
+    const { name, username, password, email } = req.body;
+
+    if (!name || !username || !password) {
+      return res.status(400).json({ error: 'Name, username, and password are required' });
+    }
+
+    // Check if user exists
+    const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
+    if (existing) {
+      return res.status(409).json({ error: 'Username already exists' });
+    }
+
+    const passwordHash = bcrypt.hashSync(password, 10);
+
+    const result = db.prepare(
+      'INSERT INTO users (name, username, email, password_hash) VALUES (?, ?, ?, ?)'
+    ).run(name, username, email || null, passwordHash);
+
+    const user = db.prepare('SELECT id, name, username, email, created_at FROM users WHERE id = ?').get(result.lastInsertRowid);
+
+    res.status(201).json({ message: 'Account created', user, otp: '123456' });
+  } catch (err) {
+    console.error('Signup error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Sign In
+app.post('/api/auth/signin', (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password are required' });
+    }
+
+    const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid username or password' });
+    }
+
+    const valid = bcrypt.compareSync(password, user.password_hash);
+    if (!valid) {
+      return res.status(401).json({ error: 'Invalid username or password' });
+    }
+
+    // Update last login
+    db.prepare('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?').run(user.id);
+
+    res.json({
+      user: {
+        id: user.id,
+        name: user.name,
+        username: user.username,
+        email: user.email,
+        women_safety: !!user.women_safety,
+        dark_mode: !!user.dark_mode,
+        voice_enabled: !!user.voice_enabled,
+      },
+      otp: '123456',
+    });
+  } catch (err) {
+    console.error('Signin error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Verify OTP (simulated - always accepts 123456 or any 6 digits)
+app.post('/api/auth/verify-otp', (req, res) => {
+  const { userId, otp } = req.body;
+  if (otp && otp.length === 6) {
+    const user = db.prepare('SELECT id, name, username, email FROM users WHERE id = ?').get(userId);
+    if (user) {
+      return res.json({ verified: true, user });
+    }
+  }
+  res.status(400).json({ error: 'Invalid OTP' });
+});
+
+// Google Sign In (simulated)
+app.post('/api/auth/google', (req, res) => {
+  try {
+    const { googleId, name, email } = req.body;
+    const username = email || `google_${googleId}`;
+
+    let user = db.prepare('SELECT * FROM users WHERE username = ? OR google_id = ?').get(username, googleId);
+
+    if (!user) {
+      const passwordHash = bcrypt.hashSync(googleId || 'google', 10);
+      const result = db.prepare(
+        'INSERT INTO users (name, username, email, password_hash, google_id) VALUES (?, ?, ?, ?, ?)'
+      ).run(name || 'Google User', username, email, passwordHash, googleId);
+
+      user = db.prepare('SELECT id, name, username, email FROM users WHERE id = ?').get(result.lastInsertRowid);
+    }
+
+    res.json({ user: { id: user.id, name: user.name, username: user.username, email: user.email } });
+  } catch (err) {
+    console.error('Google auth error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Update user settings
+app.put('/api/auth/settings/:userId', (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { women_safety, dark_mode, voice_enabled } = req.body;
+
+    db.prepare(
+      'UPDATE users SET women_safety = ?, dark_mode = ?, voice_enabled = ? WHERE id = ?'
+    ).run(women_safety ? 1 : 0, dark_mode ? 1 : 0, voice_enabled ? 1 : 0, userId);
+
+    res.json({ message: 'Settings updated' });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ========================
+// TRIPS ENDPOINTS
+// ========================
+
+// Save a trip
+app.post('/api/trips', (req, res) => {
+  try {
+    const {
+      user_id, origin_name, origin_lat, origin_lng,
+      destination_name, destination_lat, destination_lng,
+      total_distance, total_time, safety_score,
+      risk_low, risk_medium, risk_high,
+      alerts_received, start_time, end_time,
+    } = req.body;
+
+    const result = db.prepare(`
+      INSERT INTO trips (user_id, origin_name, origin_lat, origin_lng,
+        destination_name, destination_lat, destination_lng,
+        total_distance, total_time, safety_score,
+        risk_low, risk_medium, risk_high,
+        alerts_received, start_time, end_time)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      user_id, origin_name, origin_lat, origin_lng,
+      destination_name, destination_lat, destination_lng,
+      total_distance || 0, total_time || 0, safety_score || 0,
+      risk_low || 0, risk_medium || 0, risk_high || 0,
+      alerts_received || 0,
+      start_time ? new Date(start_time).toISOString() : null,
+      end_time ? new Date(end_time).toISOString() : null
+    );
+
+    res.status(201).json({ id: result.lastInsertRowid, message: 'Trip saved' });
+  } catch (err) {
+    console.error('Save trip error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get user trips
+app.get('/api/trips/:userId', (req, res) => {
+  try {
+    const trips = db.prepare(
+      'SELECT * FROM trips WHERE user_id = ? ORDER BY created_at DESC LIMIT 50'
+    ).all(req.params.userId);
+
+    res.json(trips);
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ========================
+// REPORTS ENDPOINTS
+// ========================
+
+// Create report
+app.post('/api/reports', (req, res) => {
+  try {
+    const { user_id, type, lat, lng, description } = req.body;
+
+    const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+
+    const result = db.prepare(
+      'INSERT INTO reports (user_id, type, lat, lng, description, expires_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(user_id || null, type, lat, lng, description || '', expiresAt);
+
+    const report = db.prepare('SELECT * FROM reports WHERE id = ?').get(result.lastInsertRowid);
+    res.status(201).json(report);
+  } catch (err) {
+    console.error('Create report error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get active reports
+app.get('/api/reports', (req, res) => {
+  try {
+    // Deactivate expired reports
+    db.prepare("UPDATE reports SET active = 0 WHERE expires_at < datetime('now') AND active = 1").run();
+
+    const reports = db.prepare('SELECT * FROM reports WHERE active = 1 ORDER BY created_at DESC').all();
+    res.json(reports);
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Upvote report
+app.post('/api/reports/:id/upvote', (req, res) => {
+  try {
+    db.prepare('UPDATE reports SET upvotes = upvotes + 1 WHERE id = ?').run(req.params.id);
+    res.json({ message: 'Upvoted' });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ========================
+// HEALTH CHECK
+// ========================
+
+app.get('/api/health', (req, res) => {
+  const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get();
+  const tripCount = db.prepare('SELECT COUNT(*) as count FROM trips').get();
+  const reportCount = db.prepare('SELECT COUNT(*) as count FROM reports WHERE active = 1').get();
+
+  res.json({
+    status: 'ok',
+    database: 'SQLite (better-sqlite3)',
+    tables: {
+      users: userCount.count,
+      trips: tripCount.count,
+      active_reports: reportCount.count,
+    }
+  });
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`\n🚀 SafeRoute API Server running on http://localhost:${PORT}`);
+  console.log(`📦 Database: SQLite (saferoute.db)`);
+  console.log(`\nEndpoints:`);
+  console.log(`  POST /api/auth/signup`);
+  console.log(`  POST /api/auth/signin`);
+  console.log(`  POST /api/auth/verify-otp`);
+  console.log(`  POST /api/auth/google`);
+  console.log(`  GET  /api/trips/:userId`);
+  console.log(`  POST /api/trips`);
+  console.log(`  GET  /api/reports`);
+  console.log(`  POST /api/reports`);
+  console.log(`  GET  /api/health\n`);
+});
