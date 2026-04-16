@@ -13,6 +13,8 @@ export default function SearchPanel({
   loading,
   user,
   onUserClick,
+  waypoints,
+  onClearWaypoints,
 }) {
   const [originText, setOriginText] = useState(origin?.shortName || '');
   const [destText, setDestText] = useState(destination?.shortName || '');
@@ -158,6 +160,17 @@ export default function SearchPanel({
           )}
         </button>
       </div>
+
+      {waypoints && waypoints.length > 0 && (
+        <div style={{ marginTop: '12px', padding: '8px 12px', background: 'rgba(16, 185, 129, 0.15)', borderRadius: 'var(--radius-md)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid var(--border-color)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#10b981', fontWeight: 600, fontSize: '14px' }}>
+            🛡️ {waypoints.length} Safe-Haven{waypoints.length > 1 ? 's' : ''} Added
+          </div>
+          <button className="btn btn-icon btn-secondary" onClick={onClearWaypoints} style={{ width: 24, height: 24, padding: 0 }} title="Clear waypoints">
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       {/* Autocomplete dropdown */}
       {suggestions.length > 0 && (

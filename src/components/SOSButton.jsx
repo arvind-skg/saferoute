@@ -1,9 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Phone, MapPin, X, Shield, MessageCircle } from 'lucide-react';
 
-export default function SOSButton({ userLocation, isNavigating }) {
+export default function SOSButton({ userLocation, isNavigating, externalTrigger, onResetTrigger }) {
   const [showModal, setShowModal] = useState(false);
   const [activated, setActivated] = useState(false);
+
+  useEffect(() => {
+    if (externalTrigger) {
+      setShowModal(true);
+      if (onResetTrigger) onResetTrigger();
+      // Auto-call emergency if triggered automatically by backend timer safety alarm?
+      // For demo simplicity, we just pop open the modal strongly.
+    }
+  }, [externalTrigger, onResetTrigger]);
 
   const handleSOS = () => {
     setShowModal(true);

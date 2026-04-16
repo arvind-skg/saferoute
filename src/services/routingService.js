@@ -1,8 +1,13 @@
 // OSRM Routing Service - uses the free OSRM demo server
 const OSRM_BASE = 'https://router.project-osrm.org';
 
-export async function getRoutes(startLat, startLng, endLat, endLng) {
-  const url = `${OSRM_BASE}/route/v1/driving/${startLng},${startLat};${endLng},${endLat}?overview=full&geometries=geojson&alternatives=true&steps=true`;
+export async function getRoutes(startLat, startLng, endLat, endLng, waypoints = []) {
+  const coords = [
+    `${startLng},${startLat}`,
+    ...waypoints.map(w => `${w.lng},${w.lat}`),
+    `${endLng},${endLat}`
+  ].join(';');
+  const url = `${OSRM_BASE}/route/v1/driving/${coords}?overview=full&geometries=geojson&alternatives=true&steps=true`;
   
   try {
     const res = await fetch(url);

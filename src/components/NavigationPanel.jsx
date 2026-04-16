@@ -4,6 +4,7 @@ import {
   RotateCcw, Navigation, Square, Volume2, VolumeX, Flag,
 } from 'lucide-react';
 import { formatDistance, formatDuration } from '../services/routingService';
+import { Clock, CheckCircle } from 'lucide-react';
 
 function getManeuverIcon(maneuver) {
   if (!maneuver) return <ArrowUp size={24} />;
@@ -34,6 +35,10 @@ export default function NavigationPanel({
   onEndNav,
   onReport,
   womenSafety,
+  timerActive,
+  timerExpiresAt,
+  onOpenTimerSelection,
+  onCheckIn,
 }) {
   if (!route) return null;
 
@@ -85,6 +90,25 @@ export default function NavigationPanel({
         {riskText}
       </div>
 
+      {/* Timer Bar */}
+      {timerActive ? (
+        <div style={{ margin: '0 16px 16px', padding: '12px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid var(--risk-high)', borderRadius: 'var(--radius-md)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ color: 'var(--risk-high)', fontSize: '12px', fontWeight: 'bold' }}>TIMER ACTIVE</div>
+            <div style={{ fontSize: '14px', marginTop: '4px' }}>Until {new Date(timerExpiresAt).toLocaleTimeString()}</div>
+          </div>
+          <button className="btn btn-primary" style={{ background: 'var(--risk-low)', color: '#000', padding: '8px 16px' }} onClick={onCheckIn}>
+            <CheckCircle size={16} /> I'm Safe
+          </button>
+        </div>
+      ) : (
+        <div style={{ margin: '0 16px 16px', display: 'flex', justifyContent: 'center' }}>
+          <button className="btn btn-secondary" style={{ width: '100%' }} onClick={onOpenTimerSelection}>
+            <Clock size={16} color="var(--brand-primary)" /> Set Arrival Safety Timer
+          </button>
+        </div>
+      )}
+
       {/* Actions */}
       <div className="nav-actions">
         <button
@@ -97,7 +121,7 @@ export default function NavigationPanel({
         <button
           className="btn btn-secondary"
           onClick={onReport}
-          style={{ flex: 0 }}
+          style={{ flex: 1 }}
         >
           ⚠️ Report
         </button>

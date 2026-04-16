@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import AuthPage from './components/AuthPage';
 import MapView from './components/MapView';
 import SearchPanel from './components/SearchPanel';
@@ -9,6 +9,7 @@ import SOSButton from './components/SOSButton';
 import ReportModal from './components/ReportModal';
 import TripSummary from './components/TripSummary';
 import TravelHistory from './components/TravelHistory';
+import ArrivalTimerModal from './components/ArrivalTimerModal';
 import SettingsPanel from './components/SettingsPanel';
 import {
   Settings, Layers, Plus, Locate, History, LogOut,
@@ -24,6 +25,7 @@ import { getReports, addReport } from './services/communityService';
 import { checkAlerts, onAlert } from './services/alertService';
 import { generateHeatmapData } from './data/accidentZones';
 import { apiSaveTrip, apiGetTrips, apiCreateReport, apiGetReports } from './services/apiService';
+import { fetchSafeHavens } from './services/placesService';
 
 export default function App() {
   // Auth
@@ -66,10 +68,28 @@ export default function App() {
   const [voiceOn, setVoiceOn] = useState(true);
   const [alerts, setAlerts] = useState([]);
   const [communityReports, setCommunityReports] = useState(getReports());
-  const [heatmapData] = useState(() => generateHeatmapData());
+  const heatmapData = useMemo(() => {
+    const baseData = generateHeatmapData();
+    const dynamicData = communityReports.map(r => [
+      r.lat, 
+      r.lng, 
+      1.0 // high intensity for user reports
+    ]);
+    return [...baseData, ...dynamicData];
+  }, [communityReports]);
   const [tripData, setTripData] = useState(null);
   const [weather] = useState(() => getWeather());
   const [travelHistory, setTravelHistory] = useState([]);
+
+  // Safety Timer
+  const [timerActive, setTimerActive] = useState(false);
+  const [timerExpiresAt, setTimerExpiresAt] = useState(null);
+  const [showTimerModal, setShowTimerModal] = useState(false);
+  const [externalSOSTrigger, setExternalSOSTrigger] = useState(false);
+
+  // Waypoints
+  const [safeHavens, setSafeHavens] = useState([]);
+  const [waypoints, setWaypoints] = useState([]);
 
   // Refs
   const navStartTimeRef = useRef(null);
@@ -127,6 +147,52 @@ export default function App() {
     }).catch(() => {});
   }, [user]);
 
+  // Enhanced Timer Polling Loop
+  useEffect(() => {
+    let pollingInterval;
+    if (timerActive && user?.id) {
+      pollingInterval = setInterval(async () => {
+        try {
+          const res = await fetch(`http://localhost:3001/api/timer/status/${user.id}`);
+          const data = await res.json();
+          if (data.active && data.status === 'alert') {
+            console.warn('🚨 Backend triggered SOS Rescue operation!');
+            setExternalSOSTrigger(true);
+            setTimerActive(false); // Stop polling
+          }
+        } catch (e) { }
+      }, 5000);
+    }
+    return () => clearInterval(pollingInterval);
+  }, [timerActive, user?.id]);
+
+  const handleStartTimer = async (minutes) => {
+    if (!user?.id) return;
+    try {
+      const res = await fetch('http://localhost:3001/api/timer/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, durationMinutes: minutes })
+      });
+      const data = await res.json();
+      setTimerActive(true);
+      setTimerExpiresAt(data.expiresAt);
+    } catch (e) {}
+  };
+
+  const handleTimerCheckIn = async () => {
+    if (!user?.id) return;
+    try {
+      await fetch('http://localhost:3001/api/timer/checkin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id })
+      });
+      setTimerActive(false);
+      setTimerExpiresAt(null);
+    } catch (e) {}
+  };
+
   const handleLogin = (userData) => setUser(userData);
 
   const handleLogout = () => {
@@ -183,6 +249,18 @@ export default function App() {
     }
   }, []);
 
+  // ==================== FETCH SAFE HAVENS ====================
+  useEffect(() => {
+    if (origin && destination) {
+      const midLat = (origin.lat + destination.lat) / 2;
+      const midLng = (origin.lng + destination.lng) / 2;
+      // Fetch 24/7 places around the midpoint
+      fetchSafeHavens(midLat, midLng, 5000).then(havens => {
+        setSafeHavens(havens || []);
+      });
+    }
+  }, [origin, destination]);
+
   // ==================== SEARCH ROUTES ====================
   const handleSearch = useCallback(async () => {
     if (!origin || !destination) return;
@@ -191,7 +269,7 @@ export default function App() {
     setRouteSegments([]);
 
     try {
-      const rawRoutes = await getRoutes(origin.lat, origin.lng, destination.lat, destination.lng);
+      const rawRoutes = await getRoutes(origin.lat, origin.lng, destination.lat, destination.lng, waypoints);
       const options = { timeOfDay: new Date().getHours(), weather: weather.condition, trafficDensity: 'moderate', womenSafety };
       const classified = await classifyRoutes(rawRoutes, options);
       setRoutes(classified);
@@ -218,7 +296,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [origin, destination, weather, womenSafety]);
+  }, [origin, destination, waypoints, weather, womenSafety]);
 
   // ==================== SELECT ROUTE ====================
   const handleSelectRoute = useCallback((idx) => {
@@ -400,6 +478,11 @@ export default function App() {
         showHeatmap={showHeatmap} heatmapData={heatmapData} isNavigating={isNavigating}
         mapCenter={mapCenter} mapZoom={mapZoom} fitBounds={fitBounds}
         communityReports={communityReports} womenSafety={womenSafety}
+        safeHavens={safeHavens} waypoints={waypoints}
+        onAddWaypoint={(haven) => {
+          setWaypoints(prev => [...prev, haven]);
+          setTimeout(() => handleSearch(), 0);
+        }}
       />
 
       {womenSafety && <div className="women-safety-badge"><Shield size={12} /> Women Safety Mode Active</div>}
@@ -410,6 +493,11 @@ export default function App() {
         onSearch={handleSearch} onUseMyLocation={handleUseMyLocation}
         isNavigating={isNavigating} loading={loading}
         user={user} onUserClick={() => setShowUserMenu(true)}
+        waypoints={waypoints}
+        onClearWaypoints={() => {
+          setWaypoints([]);
+          setTimeout(() => handleSearch(), 0);
+        }}
       />
 
       {!isNavigating && (
@@ -435,6 +523,9 @@ export default function App() {
           voiceEnabled={voiceOn} onToggleVoice={handleToggleVoice}
           onEndNav={handleEndNav} onReport={() => setShowReportModal(true)}
           womenSafety={womenSafety}
+          timerActive={timerActive} timerExpiresAt={timerExpiresAt}
+          onOpenTimerSelection={() => setShowTimerModal(true)}
+          onCheckIn={handleTimerCheckIn}
         />
       )}
 
@@ -448,7 +539,9 @@ export default function App() {
         <button className="map-control-btn glass-panel" onClick={handleRecenter} title="My Location"><Locate size={18} /></button>
       </div>
 
-      <SOSButton userLocation={userLocation} isNavigating={isNavigating} />
+      <SOSButton userLocation={userLocation} isNavigating={isNavigating} externalTrigger={externalSOSTrigger} onResetTrigger={() => setExternalSOSTrigger(false)} />
+
+      {showTimerModal && <ArrivalTimerModal onClose={() => setShowTimerModal(false)} onStartTimer={handleStartTimer} />}
 
       {showSettings && (
         <SettingsPanel darkMode={darkMode} onToggleDarkMode={() => setDarkMode(d => !d)}

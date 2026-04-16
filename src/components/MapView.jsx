@@ -67,6 +67,9 @@ export default function MapView({
   onMapClick,
   communityReports,
   womenSafety,
+  safeHavens,
+  waypoints,
+  onAddWaypoint,
 }) {
   const tileUrl = darkMode ? DARK_TILES : LIGHT_TILES;
 
@@ -234,6 +237,51 @@ export default function MapView({
             <Popup>{destination.displayName || 'Destination'}</Popup>
           </Marker>
         )}
+
+        {/* Waypoints markers */}
+        {waypoints && waypoints.map((wp, idx) => (
+          <Marker
+            key={`wp-${idx}`}
+            position={[wp.lat, wp.lng]}
+            icon={L.divIcon({
+              className: 'waypoint-marker',
+              html: `<div style="background:var(--brand-primary);color:white;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;border:2px solid white;">${idx + 1}</div>`,
+              iconSize: [24, 24],
+              iconAnchor: [12, 12],
+            })}
+          >
+            <Popup>
+              <strong>Stop {idx + 1}</strong><br/>
+              {wp.name || wp.displayName}
+            </Popup>
+          </Marker>
+        ))}
+
+        {/* Safe Havens markers */}
+        {safeHavens && safeHavens.map((haven, idx) => (
+          <Marker
+            key={`haven-${idx}`}
+            position={[haven.lat, haven.lng]}
+            icon={L.divIcon({
+              className: 'safehaven-marker',
+              html: `<div style="background:#10b981;color:white;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 0 10px rgba(16,185,129,0.5);border:2px solid white;font-size:16px;">🛡️</div>`,
+              iconSize: [28, 28],
+              iconAnchor: [14, 14],
+            })}
+          >
+            <Popup>
+              <div style={{ textAlign: 'center' }}>
+                <strong style={{ color: '#10b981' }}>🛡️ {haven.name}</strong><br />
+                <span style={{ textTransform: 'capitalize', color: 'var(--text-muted)' }}>{haven.type}</span>
+                <div style={{ marginTop: '10px' }}>
+                  <button className="btn btn-primary" style={{ width: '100%', padding: '6px' }} onClick={() => onAddWaypoint(haven)}>
+                    Add to Route
+                  </button>
+                </div>
+              </div>
+            </Popup>
+          </Marker>
+        ))}
 
         {/* Community report markers */}
         {communityReports && communityReports.map(report => (

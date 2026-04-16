@@ -13,6 +13,9 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = 3001;
 
+// Active timers registry: Map<userId, { timeoutId, expiresAt, status }>
+const activeTimers = new Map();
+
 // ========================
 // ML RISK ENGINE SETUP
 // ========================
@@ -273,6 +276,68 @@ app.post('/api/reports/:id/upvote', (req, res) => {
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }
+});
+
+// ========================
+// ARRIVAL TIMER ENDPOINTS
+// ========================
+
+// Start or update a user timer
+app.post('/api/timer/start', (req, res) => {
+  const { userId, durationMinutes } = req.body;
+  if (!userId || !durationMinutes) return res.status(400).json({ error: 'Missing parameters' });
+
+  // Clear existing timer if any
+  if (activeTimers.has(userId)) {
+    const existing = activeTimers.get(userId);
+    clearTimeout(existing.timeoutId);
+    activeTimers.delete(userId);
+  }
+
+  const ms = durationMinutes * 60 * 1000;
+  const expiresAt = new Date(Date.now() + ms);
+
+  const timeoutId = setTimeout(() => {
+    // When timer expires, mark status as alert
+    if (activeTimers.has(userId)) {
+      activeTimers.get(userId).status = 'alert';
+      console.log(`\n🚨 [TIMER ALERT] User ${userId} failed to check-in by ${expiresAt.toLocaleTimeString()}!`);
+    }
+  }, ms);
+
+  activeTimers.set(userId, { timeoutId, expiresAt, status: 'active' });
+  res.json({ message: 'Timer started', expiresAt });
+});
+
+// Check-in to cancel a timer
+app.post('/api/timer/checkin', (req, res) => {
+  const { userId } = req.body;
+  
+  if (activeTimers.has(userId)) {
+    const existing = activeTimers.get(userId);
+    clearTimeout(existing.timeoutId);
+    activeTimers.delete(userId);
+    console.log(`✅ [TIMER SAFE] User ${userId} checked in safely.`);
+    return res.json({ message: 'Checked in successfully' });
+  }
+  
+  res.json({ message: 'No active timer found' });
+});
+
+// Polling endpoint for frontend to check timer status
+app.get('/api/timer/status/:userId', (req, res) => {
+  const { userId } = req.params;
+  
+  if (activeTimers.has(userId)) {
+    const timer = activeTimers.get(userId);
+    return res.json({
+      active: true,
+      status: timer.status,
+      expiresAt: timer.expiresAt
+    });
+  }
+  
+  res.json({ active: false, status: 'none' });
 });
 
 // ========================
