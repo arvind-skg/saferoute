@@ -409,7 +409,7 @@ if (fs.existsSync(distPath)) {
   app.use(express.static(distPath));
   
   // Respond to any other request by serving index.html (for React Router)
-  app.get('*', (req, res) => {
+  app.get('/*', (req, res) => {
     // Skip if API request (handled above, but just in case)
     if (req.url.startsWith('/api')) return res.status(404).json({ error: 'API endpoint not found' });
     res.sendFile(path.join(distPath, 'index.html'));
