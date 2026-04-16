@@ -1,10 +1,11 @@
 import React, { useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap, CircleMarker } from 'react-leaflet';
+import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap, CircleMarker, Circle } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import HeatmapLayer from './HeatmapLayer';
 import { getReports, getReportIcon } from '../services/communityService';
 import { wildlifeZones } from '../data/wildlifeZones';
+import { chennaiSafeZones, chennaiDangerZones } from '../data/chennaiSafetyData';
 
 // Fix default marker icons
 delete L.Icon.Default.prototype._getIconUrl;
@@ -65,6 +66,7 @@ export default function MapView({
   fitBounds,
   onMapClick,
   communityReports,
+  womenSafety,
 }) {
   const tileUrl = darkMode ? DARK_TILES : LIGHT_TILES;
 
@@ -98,14 +100,17 @@ export default function MapView({
         {/* Route polylines */}
         {routes && routes.map((route, idx) => {
           if (idx === selectedRouteIdx) return null;
+          // Different colors for unselected alternate routes
+          const altColors = ['#8b5cf6', '#0ea5e9', '#f43f5e', '#14b8a6', '#eab308'];
+          const routeColor = altColors[(idx > selectedRouteIdx ? idx - 1 : idx) % altColors.length];
           return (
             <Polyline
               key={`route-${idx}`}
               positions={route.coordinates}
               pathOptions={{
-                color: '#94a3b8',
-                weight: 4,
-                opacity: 0.4,
+                color: routeColor,
+                weight: 5,
+                opacity: 0.6,
                 dashArray: '8 6',
               }}
             />
@@ -159,6 +164,48 @@ export default function MapView({
               {zone.description}
             </Popup>
           </CircleMarker>
+        ))}
+
+        {/* Women Safety Zones */}
+        {womenSafety && chennaiDangerZones.map(zone => (
+          <Circle
+            key={`danger-${zone.id}`}
+            center={[zone.lat, zone.lng]}
+            radius={zone.radius}
+            pathOptions={{
+              color: '#ef4444',
+              fillColor: '#ef4444',
+              fillOpacity: 0.2,
+              weight: 2,
+              dashArray: '6 6',
+            }}
+          >
+            <Popup>
+              <strong>⚠️ Danger Zone</strong><br />
+              {zone.name}<br />
+              <small>{zone.description}</small>
+            </Popup>
+          </Circle>
+        ))}
+
+        {womenSafety && chennaiSafeZones.map(zone => (
+          <Circle
+            key={`safe-${zone.id}`}
+            center={[zone.lat, zone.lng]}
+            radius={zone.radius}
+            pathOptions={{
+              color: '#f472b6',
+              fillColor: '#f472b6',
+              fillOpacity: 0.25,
+              weight: 2,
+            }}
+          >
+            <Popup>
+              <strong>🛡️ Safe Zone</strong><br />
+              {zone.name}<br />
+              <small>{zone.description}</small>
+            </Popup>
+          </Circle>
         ))}
 
         {/* User location marker */}

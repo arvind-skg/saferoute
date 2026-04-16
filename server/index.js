@@ -2,9 +2,51 @@ import express from 'express';
 import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import db from './db.js';
+import * as tf from '@tensorflow/tfjs';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = 3001;
+
+// ========================
+// ML RISK ENGINE SETUP
+// ========================
+let riskModel = null;
+async function loadRiskModel() {
+  const modelPath = path.join(__dirname, 'ml_model', 'model.json');
+  const weightsPath = path.join(__dirname, 'ml_model', 'weights.bin');
+  const manifestPath = path.join(__dirname, 'ml_model', 'manifest.json');
+  
+  if (fs.existsSync(modelPath) && fs.existsSync(weightsPath) && fs.existsSync(manifestPath)) {
+    try {
+      const loadHandler = {
+        load: async () => {
+          const modelJson = JSON.parse(fs.readFileSync(modelPath, 'utf8'));
+          const weightsManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+          const weightBuf = fs.readFileSync(weightsPath);
+          const weightData = weightBuf.buffer.slice(weightBuf.byteOffset, weightBuf.byteOffset + weightBuf.byteLength);
+          return {
+            modelTopology: modelJson,
+            weightSpecs: weightsManifest[0].weights,
+            weightData: weightData,
+          };
+        }
+      };
+      riskModel = await tf.loadLayersModel(loadHandler);
+      console.log('🧠 ML Risk Engine (TensorFlow) loaded successfully');
+    } catch (err) {
+      console.error('Failed to load ML Risk Engine:', err);
+    }
+  } else {
+    console.warn('⚠️ ML Risk Model files not found. Run: node server/trainModel.js');
+  }
+}
+loadRiskModel();
 
 app.use(cors());
 app.use(express.json());
@@ -234,6 +276,45 @@ app.post('/api/reports/:id/upvote', (req, res) => {
 });
 
 // ========================
+// ML RISK ENDPOINT
+// ========================
+
+app.post('/api/risk/predict', (req, res) => {
+  if (!riskModel) {
+    return res.status(503).json({ error: 'ML Model not yet loaded or trained.' });
+  }
+
+  try {
+    const { features } = req.body;
+    
+    // Check if valid array
+    if (!Array.isArray(features) || features.length !== 11) {
+      return res.status(400).json({ error: 'Expected 11 features for ML Risk prediction.' });
+    }
+
+    const inputTensor = tf.tensor2d([features]);
+    const predictionTensor = riskModel.predict(inputTensor);
+    const scoreVal = predictionTensor.dataSync()[0]; // 0.0 to 1.0
+
+    console.log('[DEBUG] Feats:', features.map(f => f.toFixed(2)).join(', '));
+    console.log('[DEBUG] Pred Score:', scoreVal);
+
+    // Cleanup memory
+    inputTensor.dispose();
+    predictionTensor.dispose();
+
+    // Map the 0-1 score to a 0-100 score
+    const finalScore = Math.min(100, Math.max(0, Math.round(scoreVal * 100)));
+    const level = finalScore < 30 ? 'low' : finalScore < 60 ? 'medium' : 'high';
+
+    res.json({ score: finalScore, level });
+  } catch (err) {
+    console.error('Prediction error:', err);
+    res.status(500).json({ error: 'Server error during ML inference' });
+  }
+});
+
+// ========================
 // HEALTH CHECK
 // ========================
 
@@ -266,5 +347,6 @@ app.listen(PORT, () => {
   console.log(`  POST /api/trips`);
   console.log(`  GET  /api/reports`);
   console.log(`  POST /api/reports`);
+  console.log(`  POST /api/risk/predict`);
   console.log(`  GET  /api/health\n`);
 });

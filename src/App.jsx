@@ -31,7 +31,7 @@ export default function App() {
   const [authChecked, setAuthChecked] = useState(false);
 
   // Core
-  const [darkMode, setDarkMode] = useState(true);
+  const [darkMode, setDarkMode] = useState(false);
   const [origin, setOrigin] = useState(null);
   const [destination, setDestination] = useState(null);
   const [routes, setRoutes] = useState(null);
@@ -192,8 +192,8 @@ export default function App() {
 
     try {
       const rawRoutes = await getRoutes(origin.lat, origin.lng, destination.lat, destination.lng);
-      const options = { timeOfDay: new Date().getHours(), weather: weather.condition, trafficDensity: 'moderate' };
-      const classified = classifyRoutes(rawRoutes, options);
+      const options = { timeOfDay: new Date().getHours(), weather: weather.condition, trafficDensity: 'moderate', womenSafety };
+      const classified = await classifyRoutes(rawRoutes, options);
       setRoutes(classified);
 
       const safestIdx = classified.findIndex(r => r.labels?.includes('safest'));
@@ -224,7 +224,7 @@ export default function App() {
   const handleSelectRoute = useCallback((idx) => {
     setSelectedRouteIdx(idx);
     if (routes?.[idx]) {
-      const opts = { timeOfDay: new Date().getHours(), weather: weather.condition };
+      const opts = { timeOfDay: new Date().getHours(), weather: weather.condition, womenSafety };
       const segments = getRouteSegmentRisks(routes[idx], opts);
       if (womenSafety && routes[idx].labels?.includes('safest')) {
         segments.forEach(seg => {
@@ -266,7 +266,7 @@ export default function App() {
       setMapZoom(16);
 
       checkAlerts(pos.lat, pos.lng, { timeOfDay: new Date().getHours(), weather: weather.condition });
-      const risk = getPointRisk(pos.lat, pos.lng, { timeOfDay: new Date().getHours(), weather: weather.condition });
+      const risk = getPointRisk(pos.lat, pos.lng, { timeOfDay: new Date().getHours(), weather: weather.condition, womenSafety });
       setCurrentRiskLevel(risk < 30 ? 'low' : risk < 60 ? 'medium' : 'high');
     });
 
