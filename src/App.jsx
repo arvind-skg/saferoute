@@ -153,7 +153,7 @@ export default function App() {
     if (timerActive && user?.id) {
       pollingInterval = setInterval(async () => {
         try {
-          const res = await fetch(`http://localhost:3001/api/timer/status/${user.id}`);
+          const res = await fetch(`/api/timer/status/${user.id}`);
           const data = await res.json();
           if (data.active && data.status === 'alert') {
             console.warn('🚨 Backend triggered SOS Rescue operation!');
@@ -169,7 +169,7 @@ export default function App() {
   const handleStartTimer = async (minutes) => {
     if (!user?.id) return;
     try {
-      const res = await fetch('http://localhost:3001/api/timer/start', {
+      const res = await fetch('/api/timer/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user.id, durationMinutes: minutes })
@@ -183,7 +183,7 @@ export default function App() {
   const handleTimerCheckIn = async () => {
     if (!user?.id) return;
     try {
-      await fetch('http://localhost:3001/api/timer/checkin', {
+      await fetch('/api/timer/checkin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user.id })

@@ -11,7 +11,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 
 // Active timers registry: Map<userId, { timeoutId, expiresAt, status }>
 const activeTimers = new Map();
@@ -399,19 +399,30 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// ========================
+// STATIC FRONTEND SERVING
+// ========================
+
+// Serve static files from the Vite build directory
+const distPath = path.join(__dirname, '..', 'dist');
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+  
+  // Respond to any other request by serving index.html (for React Router)
+  app.get('*', (req, res) => {
+    // Skip if API request (handled above, but just in case)
+    if (req.url.startsWith('/api')) return res.status(404).json({ error: 'API endpoint not found' });
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
+
 // Start server
 app.listen(PORT, () => {
-  console.log(`\n🚀 SafeRoute API Server running on http://localhost:${PORT}`);
+  console.log(`\n🚀 SafeRoute Server running on PORT ${PORT}`);
   console.log(`📦 Database: SQLite (saferoute.db)`);
-  console.log(`\nEndpoints:`);
-  console.log(`  POST /api/auth/signup`);
-  console.log(`  POST /api/auth/signin`);
-  console.log(`  POST /api/auth/verify-otp`);
-  console.log(`  POST /api/auth/google`);
-  console.log(`  GET  /api/trips/:userId`);
-  console.log(`  POST /api/trips`);
-  console.log(`  GET  /api/reports`);
-  console.log(`  POST /api/reports`);
-  console.log(`  POST /api/risk/predict`);
-  console.log(`  GET  /api/health\n`);
+  if (fs.existsSync(distPath)) {
+    console.log(`🌐 Serving Frontend from: ${distPath}`);
+  } else {
+    console.warn(`⚠️ Warning: dist/ directory not found. Frontend not being served! Run 'npm run build' first.`);
+  }
 });
